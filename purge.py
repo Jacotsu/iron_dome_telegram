@@ -17,7 +17,7 @@ data_path = 'data'
 log_path = 'logs'
 fail_threshold = 5
 # 60 requests per second
-requests_wait_time = 1/18
+requests_wait_time = 1/8
 
 
 if __name__ == '__main__':
