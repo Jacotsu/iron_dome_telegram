@@ -17,12 +17,16 @@ banned_file_path = 'banned.json'
 data_path = 'data'
 log_path = 'logs'
 fail_threshold = 5
-# 4 requests per minute
-average_requests_wait_time = 15
+# 3.3 requests per minute
+#average_requests_wait_time = 18
+average_requests_wait_time = 1/3
 
+burst_wait_time = 60
+burst_size = 12
 
 def purge_hostiles(hostile_dict):
     banned_users_count = 0
+    burst_counter = 0
     for h_id, hostile in hostile_dict.items():
         for group in settings['groups_to_preserve']:
             processed = False
@@ -30,6 +34,7 @@ def purge_hostiles(hostile_dict):
             try:
                 while not processed:
                     try:
+                        burst_counter += 1
                         user = InputPeerUser(
                             hostile['id'], hostile['access_hash']
                         )
@@ -56,6 +61,9 @@ def purge_hostiles(hostile_dict):
                         )
                         break
                     sleep(average_requests_wait_time)
+                    if burst_counter > burst_size:
+                        burst_counter = 0
+                        sleep(burst_wait_time)
             except KeyboardInterrupt:
                 return banned_users_count
     return banned_users_count
