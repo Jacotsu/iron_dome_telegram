@@ -18,24 +18,29 @@ data_path = 'data'
 log_path = 'logs'
 fail_threshold = 5
 # 3.2 bans per second
-average_requests_wait_time = 1/5
+average_requests_wait_time = 1/4
 
 
 def purge_hostiles(hostile_dict):
     banned_users_count = 0
-    burst_counter = 0
-
-    for group in settings['groups_to_preserve']:
-        # Necessary to avoid useless requests about the group information
-        # Telethon should cache this, but it doesn't
-        group = client.get_input_entity(group)
-        for h_id, hostile in hostile_dict.items():
-            processed = False
-            fail_count = 0
+    try:
+        for group in settings['groups_to_preserve']:
+            # Necessary to avoid useless requests about the group information
+            # Telethon should cache this, but it doesn't
             try:
+                group = client.get_input_entity(group)
+            except errors.FloodWaitError as e:
+                logger.error(
+                    'Rate limit triggered, waiting '
+                    f'{timedelta(seconds=e.seconds)}')
+                sleep(e.seconds)
+                group = client.get_input_entity(group)
+
+            for h_id, hostile in hostile_dict.items():
+                processed = False
+                fail_count = 0
                 while not processed:
                     try:
-                        burst_counter += 1
                         user = InputPeerUser(
                             hostile['id'], hostile['access_hash']
                         )
@@ -63,9 +68,10 @@ def purge_hostiles(hostile_dict):
                         )
                         break
                     sleep(average_requests_wait_time)
-            except KeyboardInterrupt:
-                return banned_users_count
-    return banned_users_count
+    except KeyboardInterrupt:
+        pass
+    finally:
+        return banned_users_count
 
 
 if __name__ == '__main__':
