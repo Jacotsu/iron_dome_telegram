@@ -4,7 +4,7 @@ import json
 import random
 from pathlib import Path
 from os import makedirs
-from datetime import datetime
+from datetime import datetime, timedelta
 from time import sleep
 from telethon import TelegramClient, sync, errors
 from telethon.tl.types import InputPeerUser
@@ -17,18 +17,19 @@ banned_file_path = 'banned.json'
 data_path = 'data'
 log_path = 'logs'
 fail_threshold = 5
-# 3.3 requests per minute
-#average_requests_wait_time = 18
-average_requests_wait_time = 1/3
+# 3.2 bans per second
+average_requests_wait_time = 1/5
 
-burst_wait_time = 60
-burst_size = 12
 
 def purge_hostiles(hostile_dict):
     banned_users_count = 0
     burst_counter = 0
-    for h_id, hostile in hostile_dict.items():
-        for group in settings['groups_to_preserve']:
+
+    for group in settings['groups_to_preserve']:
+        # Necessary to avoid useless requests about the group information
+        # Telethon should cache this, but it doesn't
+        group = client.get_input_entity(group)
+        for h_id, hostile in hostile_dict.items():
             processed = False
             fail_count = 0
             try:
@@ -47,9 +48,10 @@ def purge_hostiles(hostile_dict):
                         logger.info(f'Banned {stringify_user_dict(hostile)}')
                         processed = True
                     except errors.FloodWaitError as e:
-                        logger.error('Rate limit triggered, waiting '
-                                     f'{e.seconds}s')
-                        sleep(e.seconds + 3.0)
+                        logger.error(
+                            'Rate limit triggered, waiting '
+                            f'{timedelta(seconds=e.seconds)}')
+                        sleep(e.seconds)
                         continue
                     except Exception as e:
                         logger.error(e)
@@ -61,9 +63,6 @@ def purge_hostiles(hostile_dict):
                         )
                         break
                     sleep(average_requests_wait_time)
-                    if burst_counter > burst_size:
-                        burst_counter = 0
-                        sleep(burst_wait_time)
             except KeyboardInterrupt:
                 return banned_users_count
     return banned_users_count
