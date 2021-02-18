@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import json
+import random
 from pathlib import Path
 from os import makedirs
 from datetime import datetime
@@ -16,8 +17,48 @@ banned_file_path = 'banned.json'
 data_path = 'data'
 log_path = 'logs'
 fail_threshold = 5
-# 60 requests per second
-requests_wait_time = 1/8
+# 4 requests per minute
+average_requests_wait_time = 15
+
+
+def purge_hostiles(hostile_dict):
+    banned_users_count = 0
+    for h_id, hostile in hostile_dict.items():
+        for group in settings['groups_to_preserve']:
+            processed = False
+            fail_count = 0
+            try:
+                while not processed:
+                    try:
+                        user = InputPeerUser(
+                            hostile['id'], hostile['access_hash']
+                        )
+                        client.edit_permissions(
+                            group, user, view_messages=False
+                        )
+
+                        banned_users.append(hostile['id'])
+                        banned_users_count += 1
+                        logger.info(f'Banned {stringify_user_dict(hostile)}')
+                        processed = True
+                    except errors.FloodWaitError as e:
+                        logger.error('Rate limit triggered, waiting '
+                                     f'{e.seconds}s')
+                        sleep(e.seconds + 3.0)
+                        continue
+                    except Exception as e:
+                        logger.error(e)
+                        fail_count += 1
+
+                    if fail_count > fail_threshold:
+                        logger.error(
+                            f'could not ban {stringify_user_dict(hostile)}'
+                        )
+                        break
+                    sleep(average_requests_wait_time)
+            except KeyboardInterrupt:
+                return banned_users_count
+    return banned_users_count
 
 
 if __name__ == '__main__':
@@ -32,7 +73,7 @@ if __name__ == '__main__':
     settings = init_settings(settings_file_path)
     start_time = datetime.now()
 
-    with TelegramClient('session_name', settings['api_id'],
+    with TelegramClient('iron_dome', settings['api_id'],
                         settings['api_hash']) as client:
         banned_users = []
         try:
@@ -47,48 +88,16 @@ if __name__ == '__main__':
             with open(path, 'r') as group_of_hostiles_file:
                 hostile_group = json.load(group_of_hostiles_file)
                 for user in hostile_group['members']:
-                    if user not in banned_users:
+                    if user['id'] not in banned_users:
                         # This removes duplicates
                         hostile_dict[user['id']] = user
 
-        for h_id, hostile in hostile_dict.items():
-            for group in settings['groups_to_preserve']:
-
-                processed = False
-                fail_count = 0
-                while not processed:
-                    try:
-                        user = InputPeerUser(
-                            hostile['id'], hostile['access_hash']
-                        )
-                        client.edit_permissions(
-                            group, user, view_messages=False
-                        )
-
-                        processed = True
-                    except errors.FloodWaitError as e:
-                        logger.error('Rate limit triggered, waiting '
-                                     f'{e.seconds}s')
-                        sleep(e.seconds + 3.0)
-                    except Exception as e:
-                        logger.error(e)
-                        fail_count += 1
-
-                    if fail_count > fail_threshold:
-                        logger.error(
-                            f'could not ban {stringify_user_dict(hostile)}'
-                        )
-                        break
-                    sleep(requests_wait_time)
-
-            banned_users.append(hostile['id'])
-            logger.info(f'Banned {stringify_user_dict(hostile)}')
-
+        banned_users_count = purge_hostiles(hostile_dict)
         with open(banned_file_path, 'w') as banned_file:
             json.dump(banned_users, banned_file)
 
     time_delta = datetime.now() - start_time
     logger.info('Statistics')
-    logger.info(f'Users banned in this session: {len(hostile_dict)}')
+    logger.info(f'Users banned in this session: {banned_users_count}')
     logger.info(f'Total users banned: {len(banned_users)}')
     logger.info(f'Total time: {time_delta}')

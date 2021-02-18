@@ -79,7 +79,7 @@ if __name__ == '__main__':
     settings = init_settings(settings_file_path)
     logger.debug('Settings loaded: {settings}')
 
-    with TelegramClient('session_name', settings['api_id'],
+    with TelegramClient('iron_dome', settings['api_id'],
                         settings['api_hash']) as client:
 
         for group_entity in settings['target_groups']:
