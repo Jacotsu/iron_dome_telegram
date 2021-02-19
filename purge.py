@@ -11,14 +11,17 @@ from telethon.tl.types import InputPeerUser
 from utils import init_settings, stringify_user_dict
 
 str_ftime_str = '%d-%m-%Y@%H:%M:%S'
+logging_format = '%(asctime)s| %(message)s'
 logging_level = logging.INFO
 settings_file_path = 'settings.json'
 banned_file_path = 'banned.json'
 data_path = 'data'
 log_path = 'logs'
 fail_threshold = 5
-# 3.2 bans per second
+# 4 bans per second
 average_requests_wait_time = 1/4
+cool_down_limit = 300
+cool_down_time = 13*60 + 22
 
 
 def purge_hostiles(hostile_dict):
@@ -67,6 +70,12 @@ def purge_hostiles(hostile_dict):
                             f'could not ban {stringify_user_dict(hostile)}'
                         )
                         break
+                    if banned_users_count % cool_down_limit == 0:
+                        logger.info(
+                            'Cooling down in order to avoid flood limit, wait'
+                            f' {timedelta(seconds=cool_down_time)}'
+                        )
+                        sleep(cool_down_time)
                     sleep(average_requests_wait_time)
     except KeyboardInterrupt:
         pass
@@ -77,11 +86,15 @@ def purge_hostiles(hostile_dict):
 if __name__ == '__main__':
     makedirs(log_path, exist_ok=True)
     logging.basicConfig(
-        filename=f'{log_path}/{datetime.now().strftime(str_ftime_str)}.log'
+        filename=f'{log_path}/{datetime.now().strftime(str_ftime_str)}.log',
+        format=logging_format,
+        level=logging_level
     )
     logger = logging.getLogger()
-    logger.addHandler(logging.StreamHandler())
-    logger.setLevel(logging_level)
+    sh = logging.StreamHandler()
+    sh.setFormatter(logging.Formatter(logging_format))
+    sh.setLevel(logging_level)
+    logger.addHandler(sh)
 
     settings = init_settings(settings_file_path)
     start_time = datetime.now()

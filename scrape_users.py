@@ -19,10 +19,11 @@ fail_threshold = 5
 # 60 requests per second
 requests_wait_time = 1/60
 
-logging.basicConfig()
+logging.basicConfig(
+    level=logging_level,
+    format='%(asctime)s| %(message)s'
+)
 logger = logging.getLogger()
-logger.setLevel(logging_level)
-
 
 
 def process_group(group_entity):
