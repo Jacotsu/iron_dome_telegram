@@ -23,3 +23,9 @@ in hostile groups
 After configuration, run `python3 scrape_users.py` to scrape the user data and save it to local files.
 To initiate the purge, run `python3 purge.py`. This will ban all the scraped users that are not exempt from the
 groups listed in `groups_to_preserve`
+
+## Limitations
+A the moment you can ban at most 300 users every 14:15 minutes, this is a limitation imposed by telegram.
+The program will ban 300 users in 75 seconds and then wait 13 minutes, for large groups of users the average ban
+ratio will be 1 user every 3 seconds; so for maximum efficiency it is recommended to distribute the workload
+among multiple admins.
