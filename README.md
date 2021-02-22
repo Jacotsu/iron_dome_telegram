@@ -9,8 +9,8 @@ The software must be configured through its `settings.json`
 {
     "api_id": 12345,
     "api_hash": "your api hash",
-    "user_exceptions": [@username1, 123456],
-    "groups_to_preserve": [@mygroup, "https://t.me/group_to_preseve"],
+    "user_exceptions": ["@username1", 123456],
+    "groups_to_preserve": ["@mygroup", "https://t.me/group_to_preseve"],
     "target_groups": [
 	    "https://t.me/group_to_ban",
 	    "@group_to_ban",
