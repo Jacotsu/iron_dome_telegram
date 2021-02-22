@@ -8,6 +8,7 @@ from datetime import datetime
 from time import sleep
 from telethon import TelegramClient, sync, errors
 from telethon.tl.functions.channels import GetFullChannelRequest
+from telethon.tl.types import InputChannel
 from telegram.ext import DelayQueue
 from utils import filter_emojis, init_settings
 
@@ -28,11 +29,18 @@ logger = logging.getLogger()
 
 def process_group(group_entity):
     try:
-        group = client.get_input_entity(group_entity)
+        # The user passed a group id and hash
+        if isinstance(group_entity, list):
+            group = InputChannel(group_entity[0], group_entity[1])
+        else:
+            group = client.get_input_entity(group_entity)
     except Exception as e:
         logger.error(e)
         return 0
 
+    group_full = client(
+        GetFullChannelRequest(channel=group)
+    )
     participants = client.get_participants(group, aggressive=True)
     participants = [*map(
         lambda x: {
@@ -49,9 +57,6 @@ def process_group(group_entity):
         )
     )]
 
-    group_full = client(
-        GetFullChannelRequest(channel=group)
-    )
     target_group_dict = {
         'last_update': datetime.now(),
         'id': group_full.chats[0].id,

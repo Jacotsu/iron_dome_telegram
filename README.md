@@ -13,7 +13,8 @@ The software must be configured through its `settings.json`
     "groups_to_preserve": [@mygroup, "https://t.me/group_to_preseve"],
     "target_groups": [
 	    "https://t.me/group_to_ban",
-	    "@group_to_ban"
+	    "@group_to_ban",
+      [group_id, group_hash]
     ]
 }
 ```
