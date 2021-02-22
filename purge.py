@@ -14,7 +14,7 @@ str_ftime_str = '%d-%m-%Y@%H:%M:%S'
 logging_format = '%(asctime)s| %(message)s'
 logging_level = logging.INFO
 settings_file_path = 'settings.json'
-banned_file_path = 'banned.json'
+banned_path = 'banned'
 data_path = 'data'
 log_path = 'logs'
 fail_threshold = 5
@@ -28,6 +28,7 @@ def purge_hostiles(hostile_dict):
     banned_users_count = 0
     try:
         for group in settings['groups_to_preserve']:
+            banned_users = []
             # Necessary to avoid useless requests about the group information
             # Telethon should cache this, but it doesn't
             try:
@@ -39,7 +40,18 @@ def purge_hostiles(hostile_dict):
                 sleep(e.seconds)
                 group = client.get_input_entity(group)
 
+            try:
+                with open(
+                    f'{banned_path}/{group.channel_id}.json', 'r'
+                ) as banned_file:
+                    banned_users = json.load(banned_file)
+            except FileNotFoundError:
+                pass
+
             for h_id, hostile in hostile_dict.items():
+                # Skip already banned users
+                if h_id in banned_users:
+                    continue
                 processed = False
                 fail_count = 0
                 while not processed:
@@ -77,6 +89,11 @@ def purge_hostiles(hostile_dict):
                         )
                         sleep(cool_down_time)
                     sleep(average_requests_wait_time)
+
+            with open(
+                f'{banned_path}/{group.channel_id}.json', 'w'
+            ) as banned_file:
+                json.dump(banned_users, banned_file)
     except KeyboardInterrupt:
         pass
     finally:
@@ -85,6 +102,7 @@ def purge_hostiles(hostile_dict):
 
 if __name__ == '__main__':
     makedirs(log_path, exist_ok=True)
+    makedirs(banned_path, exist_ok=True)
     logging.basicConfig(
         filename=f'{log_path}/{datetime.now().strftime(str_ftime_str)}.log',
         format=logging_format,
@@ -101,29 +119,18 @@ if __name__ == '__main__':
 
     with TelegramClient('iron_dome', settings['api_id'],
                         settings['api_hash']) as client:
-        banned_users = []
-        try:
-            with open(banned_file_path, 'r') as banned_file:
-                banned_users = json.load(banned_file)
-        except FileNotFoundError:
-            pass
-
         hostile_dict = {}
         pathlist = Path(data_path).rglob('*.json')
         for path in pathlist:
             with open(path, 'r') as group_of_hostiles_file:
                 hostile_group = json.load(group_of_hostiles_file)
                 for user in hostile_group['members']:
-                    if user['id'] not in banned_users:
-                        # This removes duplicates
-                        hostile_dict[user['id']] = user
+                    # This removes duplicates
+                    hostile_dict[user['id']] = user
 
         banned_users_count = purge_hostiles(hostile_dict)
-        with open(banned_file_path, 'w') as banned_file:
-            json.dump(banned_users, banned_file)
 
     time_delta = datetime.now() - start_time
     logger.info('Statistics')
     logger.info(f'Users banned in this session: {banned_users_count}')
-    logger.info(f'Total users banned: {len(banned_users)}')
     logger.info(f'Total time: {time_delta}')
