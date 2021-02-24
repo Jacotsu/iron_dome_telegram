@@ -41,6 +41,23 @@ def process_group(group_entity):
     group_full = client(
         GetFullChannelRequest(channel=group)
     )
+
+    target_group_dict = {
+        'last_update': datetime.now(),
+        'id': group_full.chats[0].id,
+        'access_hash': group_full.chats[0].access_hash,
+        'title': filter_emojis(group_full.chats[0].title),
+        'members': []
+    }
+
+    try:
+        with open(f'{data_path}/{target_group_dict["id"]}.json', 'r') as\
+                target_group_file:
+            target_group_dict['members'] = \
+                json.load(target_group_file)['members']
+    except FileNotFoundError:
+        pass
+
     participants = client.get_participants(group, aggressive=True)
     participants = [*map(
         lambda x: {
@@ -56,14 +73,12 @@ def process_group(group_entity):
             participants
         )
     )]
-
-    target_group_dict = {
-        'last_update': datetime.now(),
-        'id': group_full.chats[0].id,
-        'access_hash': group_full.chats[0].access_hash,
-        'title': filter_emojis(group_full.chats[0].title),
-        'members': participants
-    }
+    for old_member in target_group_dict['members']:
+        for member in participants:
+            if member['id'] == old_member['id']:
+                target_group_dict['members'].remove(old_member)
+                break
+    target_group_dict['members'].extend(participants)
 
     with open(f'{data_path}/{target_group_dict["id"]}.json', 'w') as\
             target_group_file:
