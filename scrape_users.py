@@ -69,7 +69,7 @@ def process_group(group_entity):
             'phone': x.phone
         },
         filter(
-            lambda x: x.id not in settings['user_exceptions'],
+            lambda x: x.id not in settings['user_exceptions'] and not x.bot,
             participants
         )
     )]
@@ -102,6 +102,7 @@ if __name__ == '__main__':
 
     with TelegramClient('iron_dome', settings['api_id'],
                         settings['api_hash']) as client:
+        settings['user_exceptions'].append(client.get_me().id)
 
         for group_entity in settings['target_groups']:
             processed = False
