@@ -25,7 +25,7 @@ cool_down_time = 13*60 + 22
 
 
 def purge_hostiles(hostile_dict):
-    banned_users_count = 0
+    ban_count = 0
     try:
         for group in settings['groups_to_preserve']:
             banned_users = []
@@ -64,7 +64,7 @@ def purge_hostiles(hostile_dict):
                         )
 
                         banned_users.append(hostile['id'])
-                        banned_users_count += 1
+                        ban_count += 1
                         logger.info(f'Banned {stringify_user_dict(hostile)}')
                         processed = True
                     except errors.FloodWaitError as e:
@@ -97,7 +97,7 @@ def purge_hostiles(hostile_dict):
     except KeyboardInterrupt:
         pass
     finally:
-        return banned_users_count
+        return ban_count
 
 
 if __name__ == '__main__':
@@ -128,9 +128,9 @@ if __name__ == '__main__':
                     # This removes duplicates
                     hostile_dict[user['id']] = user
 
-        banned_users_count = purge_hostiles(hostile_dict)
+        ban_count = purge_hostiles(hostile_dict)
 
     time_delta = datetime.now() - start_time
     logger.info('Statistics')
-    logger.info(f'Users banned in this session: {banned_users_count}')
+    logger.info(f'Bans in this session: {ban_count}')
     logger.info(f'Total time: {time_delta}')
