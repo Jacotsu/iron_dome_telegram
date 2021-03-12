@@ -82,7 +82,7 @@ def purge_hostiles(hostile_dict):
                             f'could not ban {stringify_user_dict(hostile)}'
                         )
                         break
-                    if banned_users_count % cool_down_limit == 0:
+                    if ban_count % cool_down_limit == 0:
                         logger.info(
                             'Cooling down in order to avoid flood limit, wait'
                             f' {timedelta(seconds=cool_down_time)}'
