@@ -9,6 +9,7 @@ The software must be configured through its `settings.json`
 {
     "api_id": 12345,
     "api_hash": "your api hash",
+    "trigger_words": ["badboy"],
     "user_exceptions": ["@username1", 123456],
     "groups_to_preserve": ["@mygroup", "https://t.me/group_to_preseve"],
     "target_groups": [
@@ -24,6 +25,9 @@ in hostile groups
 After configuration, run `python3 scrape_users.py` to scrape the user data and save it to local files.
 To initiate the purge, run `python3 purge.py`. This will ban all the scraped users that are not exempt from the
 groups listed in `groups_to_preserve`
+
+`trigger_words` is a list of words that will raise a red flag if one of them is found the users' bio so
+`find_infiltrators.py` will mark him.
 
 ## Limitations
 A the moment you can ban at most 300 users every 14:15 minutes, this is a limitation imposed by telegram.
