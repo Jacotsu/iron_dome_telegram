@@ -24,6 +24,7 @@ logging.basicConfig(
     level=logging_level,
     format='%(asctime)s| %(message)s'
 )
+logging.getLogger('telethon').setLevel(level=logging.INFO)
 logger = logging.getLogger()
 
 
@@ -98,7 +99,7 @@ if __name__ == '__main__':
 
     makedirs(data_path, exist_ok=True)
     settings = init_settings(settings_file_path)
-    logger.debug('Settings loaded: {settings}')
+    logger.debug(f'Settings loaded: {settings}')
 
     with TelegramClient('iron_dome', settings['api_id'],
                         settings['api_hash']) as client:

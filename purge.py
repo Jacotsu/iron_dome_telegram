@@ -108,6 +108,7 @@ if __name__ == '__main__':
         format=logging_format,
         level=logging_level
     )
+    logging.getLogger('telethon').setLevel(level=logging.INFO)
     logger = logging.getLogger()
     sh = logging.StreamHandler()
     sh.setFormatter(logging.Formatter(logging_format))

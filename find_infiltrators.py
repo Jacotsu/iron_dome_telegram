@@ -11,7 +11,8 @@ from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import InputChannel
 from telegram.ext import DelayQueue
-from utils import filter_emojis, init_settings, stringify_user_dict
+from utils import filter_emojis, init_settings, stringify_user_dict, \
+    stringify_user
 
 
 str_ftime_str = '%d-%m-%Y@%H:%M:%S'
@@ -26,6 +27,7 @@ logging.basicConfig(
     level=logging_level,
     format='%(asctime)s| %(message)s'
 )
+logging.getLogger('telethon').setLevel(level=logging.INFO)
 logger = logging.getLogger()
 
 
@@ -52,48 +54,63 @@ def process_group(group_entity):
         'members': []
     }
 
+    try:
+        with open(f'{data_path}/{target_group_dict["id"]}.json', 'r') as\
+                target_group_file:
+            target_group_dict['members'] = \
+                json.load(target_group_file)['members']
+    except FileNotFoundError:
+        pass
+
     participants = client.get_participants(group, aggressive=True)
-    full_participants = []
 
     for part in participants:
         processed = False
         while not processed:
             try:
-                full_participants.append(client(GetFullUserRequest(part)))
+                full_part = client(GetFullUserRequest(part))
+                if part.id not in settings['user_exceptions'] and not part.bot\
+                   and full_part.about:
+                    logger.debug(
+                        f'{stringify_user(part)}: {full_part.about}'
+                    )
+                    if any(trigger_word in full_part.about.casefold() for
+                           trigger_word in settings['trigger_words']):
+
+                        member = {
+                            'id': part.id,
+                            'access_hash': part.access_hash,
+                            'first_name': filter_emojis(part.first_name),
+                            'last_name': filter_emojis(part.last_name),
+                            'about': full_part.about,
+                            'username': part.username,
+                            'phone': part.phone
+                        }
+
+                        for old_member in target_group_dict['members']:
+                            if member['id'] == old_member['id']:
+                                target_group_dict['members'].remove(old_member)
+                                break
+                        target_group_dict['members'].append(member)
+                        logger.info(
+                            'Found possible infiltrator: '
+                            f'{stringify_user_dict(member)} '
+                            f'\"{member["about"]}\"'
+                        )
                 processed = True
             except errors.FloodWaitError as e:
                 logger.error(f'Rate limit triggered, waiting {e.seconds}s')
                 sleep(e.seconds + 3.0)
             except Exception as e:
                 logger.error(e)
+            except KeyboardInterrupt as e:
+                with open(
+                    f'{data_path}/{target_group_dict["id"]}.json', 'w') as\
+                        target_group_file:
+                    json.dump(target_group_dict, target_group_file, indent=4,
+                              default=str)
+                raise e
             sleep(requests_wait_time)
-
-    participants = [*map(
-        lambda x: {
-            'id': x.user.id,
-            'access_hash': x.user.access_hash,
-            'first_name': filter_emojis(x.user.first_name),
-            'last_name': filter_emojis(x.user.last_name),
-            'about': x.about,
-            'username': x.user.username,
-            'phone': x.user.phone
-        },
-        filter(
-            lambda x: x.user.id not in settings['user_exceptions'] and
-            not x.user.bot and x.about
-            and any(trigger_word in x.about.casefold() for trigger_word in
-                    settings['trigger_words']),
-            full_participants
-        )
-    )]
-    for old_member in target_group_dict['members']:
-        for member in participants:
-            if member['id'] == old_member['id']:
-                target_group_dict['members'].remove(old_member)
-                break
-            logger.info('Found possible infiltrator: '
-                        f'{stringify_user_dict(member)} \"{member["about"]}\"')
-    target_group_dict['members'].extend(participants)
 
     with open(f'{data_path}/{target_group_dict["id"]}.json', 'w') as\
             target_group_file:
@@ -110,35 +127,39 @@ if __name__ == '__main__':
 
     makedirs(data_path, exist_ok=True)
     settings = init_settings(settings_file_path)
-    logger.debug('Settings loaded: {settings}')
+    logger.debug(f'Settings loaded: {settings}')
 
     with TelegramClient('iron_dome', settings['api_id'],
                         settings['api_hash']) as client:
         settings['user_exceptions'].append(client.get_me().id)
 
-        for group_entity in settings['groups_to_preserve']:
-            processed = False
-            fail_count = 0
-            while not processed:
-                try:
-                    number_of_infiltrators = process_group(group_entity)
-                    total_infiltrators += number_of_infiltrators
-                    total_groups_scraped += 1
-                    processed = True
-                except errors.FloodWaitError as e:
-                    logger.error(f'Rate limit triggered, waiting {e.seconds}s')
-                    sleep(e.seconds + 3.0)
-                except Exception as e:
-                    logger.error(e)
-                    fail_count += 1
+        try:
+            for group_entity in settings['groups_to_preserve']:
+                processed = False
+                fail_count = 0
+                while not processed:
+                    try:
+                        number_of_infiltrators = process_group(group_entity)
+                        total_infiltrators += number_of_infiltrators
+                        total_groups_scraped += 1
+                        processed = True
+                    except errors.FloodWaitError as e:
+                        logger.error('Rate limit triggered, waiting '
+                                     f'{e.seconds}s')
+                        sleep(e.seconds + 3.0)
+                    except Exception as e:
+                        logger.error(e)
+                        fail_count += 1
 
-                if fail_count > fail_threshold:
-                    logger.error(f'could not process group {group_entity}')
-                    break
-                sleep(requests_wait_time)
-
-    time_delta = datetime.now() - start_time
-    logger.info('Statistics')
-    logger.info(f'Total groups analyzed: {total_groups_scraped}')
-    logger.info(f'Total infiltrators found: {total_infiltrators}')
-    logger.info(f'Total time: {time_delta}')
+                    if fail_count > fail_threshold:
+                        logger.error(f'could not process group {group_entity}')
+                        break
+                    sleep(requests_wait_time)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            time_delta = datetime.now() - start_time
+            logger.info('Statistics')
+            logger.info(f'Total groups analyzed: {total_groups_scraped}')
+            logger.info(f'Total infiltrators found: {total_infiltrators}')
+            logger.info(f'Total time: {time_delta}')

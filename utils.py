@@ -30,6 +30,7 @@ def filter_emojis(text):
     else:
         return None
 
+
 def init_settings(path):
     try:
         with open(path, 'r') as settings_file:
@@ -42,6 +43,7 @@ def init_settings(path):
                 {
                     'api_id': None,
                     'api_hash': None,
+                    'trigger_words': [],
                     'groups_to_preserve': [],
                     'user_exceptions': [],
                     'target_groups': []
@@ -56,3 +58,7 @@ def init_settings(path):
 def stringify_user_dict(user):
     return f'{user["first_name"]} {user["last_name"]} {user["username"]}'\
             f'({user["id"]})'
+
+
+def stringify_user(user):
+    return f'{user.first_name} {user.last_name} {user.username}({user.id})'
