@@ -32,6 +32,7 @@ logger = logging.getLogger()
 
 
 def process_group(group_entity):
+    infiltrators = 0
     try:
         # The user passed a group id and hash
         if isinstance(group_entity, list):
@@ -97,6 +98,7 @@ def process_group(group_entity):
                             f'{stringify_user_dict(member)} '
                             f'\"{member["about"]}\"'
                         )
+                        infiltrators += 1
                 processed = True
             except errors.FloodWaitError as e:
                 logger.error(f'Rate limit triggered, waiting {e.seconds}s')
@@ -117,7 +119,7 @@ def process_group(group_entity):
         json.dump(target_group_dict, target_group_file, indent=4,
                   default=str)
 
-    return len(participants)
+    return infiltrators
 
 
 if __name__ == '__main__':
