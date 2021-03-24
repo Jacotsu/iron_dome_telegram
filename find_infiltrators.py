@@ -75,8 +75,14 @@ def process_group(group_entity):
                     logger.debug(
                         f'{stringify_user(part)}: {full_part.about}'
                     )
-                    if any(trigger_word in full_part.about.casefold() for
-                           trigger_word in settings['trigger_words']):
+                    if any(trigger_word in data_field.casefold()
+                           for data_field in [
+                               full_part.about,
+                               full_part.first_name,
+                               full_part.last_name,
+                               full_part.username
+                           ]
+                           for trigger_word in settings['trigger_words']):
 
                         member = {
                             'id': part.id,
