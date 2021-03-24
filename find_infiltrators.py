@@ -76,11 +76,12 @@ def process_group(group_entity):
                         f'{stringify_user(part)}: {full_part.about}'
                     )
                     if any(trigger_word in data_field.casefold()
+                           if data_field else None
                            for data_field in [
                                full_part.about,
-                               full_part.first_name,
-                               full_part.last_name,
-                               full_part.username
+                               part.first_name,
+                               part.last_name,
+                               part.username
                            ]
                            for trigger_word in settings['trigger_words']):
 
