@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import sys
+import json
 from time import sleep
 from telethon.sync import TelegramClient
 from telethon.tl.functions.users import GetFullUserRequest
@@ -29,7 +30,7 @@ if __name__ == '__main__':
 
         for username in sys.argv[1:]:
             full_user = client(GetFullUserRequest(username))
-            print({
+            print(json.dumps({
                 'id': full_user.user.id,
                 'access_hash': full_user.user.access_hash,
                 'first_name': filter_emojis(full_user.user.first_name),
@@ -37,7 +38,7 @@ if __name__ == '__main__':
                 'username': full_user.user.username,
                 'phone': full_user.user.phone,
                 'about': full_user.about
-            })
+            }, indent=4))
             sleep(requests_wait_time)
 
 
