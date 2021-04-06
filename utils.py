@@ -62,3 +62,10 @@ def stringify_user_dict(user):
 
 def stringify_user(user):
     return f'{user.first_name} {user.last_name} {user.username}({user.id})'
+
+def stringify_group_entity(group_entity):
+    if isinstance(group_entity, dict):
+        return f'{group_entity["title"]}'
+    else:
+        return f"{group_entity}"
+

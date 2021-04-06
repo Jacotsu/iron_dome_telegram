@@ -9,8 +9,9 @@ from time import sleep
 from telethon import TelegramClient, sync, errors
 from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.types import InputChannel
+from telethon.errors import ChannelPrivateError
 from telegram.ext import DelayQueue
-from utils import filter_emojis, init_settings
+from utils import filter_emojis, init_settings, stringify_group_entity
 
 str_ftime_str = '%d-%m-%Y@%H:%M:%S'
 logging_level = logging.INFO
@@ -30,9 +31,15 @@ logger = logging.getLogger()
 
 def process_group(group_entity):
     try:
-        # The user passed a group id and hash
-        if isinstance(group_entity, list):
-            group = InputChannel(group_entity[0], group_entity[1])
+        # The user passed a channel dict
+        if isinstance(group_entity, dict):
+            try:
+                group = InputChannel(
+                    group_entity['group_id'],
+                    group_entity['group_hash']
+                )
+            except KeyError:
+                group = client.get_input_entity(group_entity['url'])
         else:
             group = client.get_input_entity(group_entity)
     except Exception as e:
@@ -48,8 +55,13 @@ def process_group(group_entity):
         'id': group_full.chats[0].id,
         'access_hash': group_full.chats[0].access_hash,
         'title': filter_emojis(group_full.chats[0].title),
+        'tags': [],
         'members': []
     }
+    try:
+        target_group_dict['tags'] = group_entity['tags']
+    except (KeyError, TypeError):
+        pass
 
     try:
         with open(f'{data_path}/{target_group_dict["id"]}.json', 'r') as\
@@ -117,6 +129,11 @@ if __name__ == '__main__':
                 except errors.FloodWaitError as e:
                     logger.error(f'Rate limit triggered, waiting {e.seconds}s')
                     sleep(e.seconds + 3.0)
+                except ChannelPrivateError as e:
+                    logger.error(
+                        f"{stringify_group_entity(group_entity)}: {e}"
+                    )
+                    break
                 except Exception as e:
                     logger.error(e)
                     fail_count += 1

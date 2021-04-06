@@ -15,7 +15,12 @@ The software must be configured through its `settings.json`
     "target_groups": [
 	    "https://t.me/group_to_ban",
 	    "@group_to_ban",
-      [group_id, group_hash]
+      {
+        "url": "t.me/group_to_ban"
+        "group_id": 123456
+        "group_hash" -12315
+        "tags": ["bad", "people", "inside"]
+      }
     ]
 }
 ```
@@ -28,6 +33,8 @@ groups listed in `groups_to_preserve`
 
 `trigger_words` is a list of words that will raise a red flag if one of them is found the users' bio so
 `find_infiltrators.py` will mark him.
+
+`group_id` and `group_hash` are necessary only if the url doesn't work anymore.
 
 ## Limitations
 A the moment you can ban at most 300 users every 14:15 minutes, this is a limitation imposed by telegram.
