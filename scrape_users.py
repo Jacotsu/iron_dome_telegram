@@ -11,7 +11,8 @@ from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.types import InputChannel
 from telethon.errors import ChannelPrivateError
 from telegram.ext import DelayQueue
-from utils import filter_emojis, init_settings, stringify_group_entity
+from utils import filter_emojis, init_settings, stringify_group_entity,\
+    dedupe_members_and_merge
 
 str_ftime_str = '%d-%m-%Y@%H:%M:%S'
 logging_level = logging.INFO
@@ -29,7 +30,7 @@ logging.getLogger('telethon').setLevel(level=logging.INFO)
 logger = logging.getLogger()
 
 
-def process_group(group_entity):
+async def process_group(group_entity):
     try:
         # The user passed a channel dict
         if isinstance(group_entity, dict):
@@ -39,14 +40,14 @@ def process_group(group_entity):
                     group_entity['group_hash']
                 )
             except KeyError:
-                group = client.get_input_entity(group_entity['url'])
+                group = await client.get_input_entity(group_entity['url'])
         else:
-            group = client.get_input_entity(group_entity)
+            group = await client.get_input_entity(group_entity)
     except Exception as e:
         logger.error(e)
         return 0
 
-    group_full = client(
+    group_full = await client(
         GetFullChannelRequest(channel=group)
     )
 
@@ -71,7 +72,29 @@ def process_group(group_entity):
     except FileNotFoundError:
         pass
 
-    participants = client.get_participants(group, aggressive=True)
+    # Must be done twice because aggressive doesn't get users with
+    # non latin names, and normal one doesn't get all users
+    participants_non_aggressive = await client.get_participants(
+        group,
+    )
+    participants_non_aggressive = [*map(
+        lambda x: {
+            'id': x.id,
+            'access_hash': x.access_hash,
+            'first_name': filter_emojis(x.first_name),
+            'last_name': filter_emojis(x.last_name),
+            'username': x.username,
+            'phone': x.phone
+        },
+        filter(
+            lambda x: x.id not in settings['user_exceptions'] and not x.bot,
+            participants_non_aggressive
+        )
+    )]
+    participants = await client.get_participants(
+        group,
+        aggressive=True
+    )
     participants = [*map(
         lambda x: {
             'id': x.id,
@@ -86,17 +109,19 @@ def process_group(group_entity):
             participants
         )
     )]
-    for old_member in target_group_dict['members']:
-        for member in participants:
-            if member['id'] == old_member['id']:
-                target_group_dict['members'].remove(old_member)
-                break
-    target_group_dict['members'].extend(participants)
+
+    participants = dedupe_members_and_merge(
+        participants, participants_non_aggressive
+    )
+
+    target_group_dict['members'] = dedupe_members_and_merge(
+        target_group_dict['members'], participants
+    )
 
     with open(f'{data_path}/{target_group_dict["id"]}.json', 'w') as\
             target_group_file:
         json.dump(target_group_dict, target_group_file, indent=4,
-                  default=str)
+                  default=str, ensure_ascii=False)
 
     logger.info('Data successfully collected from'
                 f' {target_group_dict["title"]}'
@@ -104,47 +129,52 @@ def process_group(group_entity):
     return len(participants)
 
 
-if __name__ == '__main__':
+async def main(settings, client):
     total_users_scraped = 0
     total_groups_scraped = 0
     start_time = datetime.now()
 
-    makedirs(data_path, exist_ok=True)
-    settings = init_settings(settings_file_path)
-    logger.debug(f'Settings loaded: {settings}')
+    current_user = await client.get_me()
+    settings['user_exceptions'].append(current_user.id)
 
-    with TelegramClient('iron_dome', settings['api_id'],
-                        settings['api_hash']) as client:
-        settings['user_exceptions'].append(client.get_me().id)
+    for group_entity in settings['target_groups']:
+        processed = False
+        fail_count = 0
+        while not processed:
+            try:
+                number_of_users = await process_group(group_entity)
+                total_users_scraped += number_of_users
+                total_groups_scraped += 1
+                processed = True
+            except errors.FloodWaitError as e:
+                logger.error(f'Rate limit triggered, waiting {e.seconds}s')
+                sleep(e.seconds + 3.0)
+            except ChannelPrivateError as e:
+                logger.error(
+                    f"{stringify_group_entity(group_entity)}: {e}"
+                )
+                break
+            except Exception as e:
+                logger.error(e)
+                fail_count += 1
 
-        for group_entity in settings['target_groups']:
-            processed = False
-            fail_count = 0
-            while not processed:
-                try:
-                    number_of_users = process_group(group_entity)
-                    total_users_scraped += number_of_users
-                    total_groups_scraped += 1
-                    processed = True
-                except errors.FloodWaitError as e:
-                    logger.error(f'Rate limit triggered, waiting {e.seconds}s')
-                    sleep(e.seconds + 3.0)
-                except ChannelPrivateError as e:
-                    logger.error(
-                        f"{stringify_group_entity(group_entity)}: {e}"
-                    )
-                    break
-                except Exception as e:
-                    logger.error(e)
-                    fail_count += 1
-
-                if fail_count > fail_threshold:
-                    logger.error(f'could not process group {group_entity}')
-                    break
-                sleep(requests_wait_time)
+            if fail_count > fail_threshold:
+                logger.error(f'could not process group {group_entity}')
+                break
+            sleep(requests_wait_time)
 
     time_delta = datetime.now() - start_time
     logger.info('Statistics')
     logger.info(f'Total users scraped: {total_users_scraped}')
     logger.info(f'Total groups scraped: {total_groups_scraped}')
     logger.info(f'Total time: {time_delta}')
+
+
+if __name__ == '__main__':
+    makedirs(data_path, exist_ok=True)
+    settings = init_settings(settings_file_path)
+    logger.debug(f'Settings loaded: {settings}')
+
+    with TelegramClient('iron_dome', settings['api_id'],
+                        settings['api_hash']) as client:
+        client.loop.run_until_complete(main(settings, client))

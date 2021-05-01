@@ -2,28 +2,16 @@ import re
 import json
 import sys
 import logging
+from copy import deepcopy
 
 
 def filter_emojis(text):
     pattern = "["\
-            "\U0001F600-\U0001F64F"\
-            "\U0001F300-\U0001F5FF"\
-            "\U0001F680-\U0001F6FF"\
-            "\U0001F1E0-\U0001F1FF"\
-            "\U00002500-\U00002BEF"\
-            "\U00002702-\U000027B0"\
-            "\U00002702-\U000027B0"\
-            "\U000024C2-\U0001F251"\
-            "\U0001f926-\U0001f937"\
-            "\U00010000-\U0010ffff"\
-            "\u2640-\u2642"\
-            "\u2600-\u2B55"\
-            "\u200d"\
-            "\u23cf"\
-            "\u23e9"\
-            "\u231a"\
-            "\ufe0f"\
-            "\u3030"\
+            "\u0000-\u0020"\
+            "\u007F-\u00A0"\
+            "\u2190-\u2BFE"\
+            "\U0001F18B-\U0001F1AD"\
+            "\U0001F200-\U0001FFFF"\
             "]+"
     if text:
         return re.sub(pattern, '', text, flags=re.UNICODE)
@@ -63,9 +51,21 @@ def stringify_user_dict(user):
 def stringify_user(user):
     return f'{user.first_name} {user.last_name} {user.username}({user.id})'
 
+
 def stringify_group_entity(group_entity):
     if isinstance(group_entity, dict):
         return f'{group_entity["title"]}'
     else:
         return f"{group_entity}"
 
+
+def dedupe_members_and_merge(list_1, list_2):
+    tmp = deepcopy(list_1)
+    tmp_2 = deepcopy(list_2)
+    for member_1 in list_1:
+        for member_2 in list_2:
+            if member_1['id'] == member_2['id']:
+                tmp_2.remove(member_2)
+                break
+    tmp.extend(tmp_2)
+    return tmp

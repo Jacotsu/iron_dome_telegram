@@ -31,19 +31,19 @@ logging.getLogger('telethon').setLevel(level=logging.INFO)
 logger = logging.getLogger()
 
 
-def process_group(group_entity):
+async def process_group(group_entity):
     infiltrators = 0
     try:
         # The user passed a group id and hash
         if isinstance(group_entity, list):
             group = InputChannel(group_entity[0], group_entity[1])
         else:
-            group = client.get_input_entity(group_entity)
+            group = await client.get_input_entity(group_entity)
     except Exception as e:
         logger.error(e)
         return 0
 
-    group_full = client(
+    group_full = await client(
         GetFullChannelRequest(channel=group)
     )
 
@@ -63,13 +63,13 @@ def process_group(group_entity):
     except FileNotFoundError:
         pass
 
-    participants = client.get_participants(group, aggressive=True)
+    participants = await client.get_participants(group, aggressive=True)
 
     for part in participants:
         processed = False
         while not processed:
             try:
-                full_part = client(GetFullUserRequest(part))
+                full_part = await client(GetFullUserRequest(part))
                 if part.id not in settings['user_exceptions'] and not part.bot\
                    and full_part.about:
                     logger.debug(
@@ -117,58 +117,61 @@ def process_group(group_entity):
                     f'{data_path}/{target_group_dict["id"]}.json', 'w') as\
                         target_group_file:
                     json.dump(target_group_dict, target_group_file, indent=4,
-                              default=str)
+                              default=str, ensure_ascii=False)
                 raise e
             sleep(requests_wait_time)
 
     with open(f'{data_path}/{target_group_dict["id"]}.json', 'w') as\
             target_group_file:
         json.dump(target_group_dict, target_group_file, indent=4,
-                  default=str)
+                  default=str, ensure_ascii=False)
 
     return infiltrators
 
-
-if __name__ == '__main__':
+async def main(settings, client):
     total_infiltrators = 0
     total_groups_scraped = 0
     start_time = datetime.now()
 
+    current_user = await client.get_me()
+    settings['user_exceptions'].append(current_user.id)
+
+    try:
+        for group_entity in settings['groups_to_preserve']:
+            processed = False
+            fail_count = 0
+            while not processed:
+                try:
+                    number_of_infiltrators = await process_group(group_entity)
+                    total_infiltrators += number_of_infiltrators
+                    total_groups_scraped += 1
+                    processed = True
+                except errors.FloodWaitError as e:
+                    logger.error('Rate limit triggered, waiting '
+                                 f'{e.seconds}s')
+                    sleep(e.seconds + 3.0)
+                except Exception as e:
+                    logger.error(e)
+                    fail_count += 1
+
+                if fail_count > fail_threshold:
+                    logger.error(f'could not process group {group_entity}')
+                    break
+                sleep(requests_wait_time)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        time_delta = datetime.now() - start_time
+        logger.info('Statistics')
+        logger.info(f'Total groups analyzed: {total_groups_scraped}')
+        logger.info(f'Total infiltrators found: {total_infiltrators}')
+        logger.info(f'Total time: {time_delta}')
+
+if __name__ == '__main__':
     makedirs(data_path, exist_ok=True)
     settings = init_settings(settings_file_path)
     logger.debug(f'Settings loaded: {settings}')
 
     with TelegramClient('iron_dome', settings['api_id'],
                         settings['api_hash']) as client:
-        settings['user_exceptions'].append(client.get_me().id)
-
-        try:
-            for group_entity in settings['groups_to_preserve']:
-                processed = False
-                fail_count = 0
-                while not processed:
-                    try:
-                        number_of_infiltrators = process_group(group_entity)
-                        total_infiltrators += number_of_infiltrators
-                        total_groups_scraped += 1
-                        processed = True
-                    except errors.FloodWaitError as e:
-                        logger.error('Rate limit triggered, waiting '
-                                     f'{e.seconds}s')
-                        sleep(e.seconds + 3.0)
-                    except Exception as e:
-                        logger.error(e)
-                        fail_count += 1
-
-                    if fail_count > fail_threshold:
-                        logger.error(f'could not process group {group_entity}')
-                        break
-                    sleep(requests_wait_time)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            time_delta = datetime.now() - start_time
-            logger.info('Statistics')
-            logger.info(f'Total groups analyzed: {total_groups_scraped}')
-            logger.info(f'Total infiltrators found: {total_infiltrators}')
-            logger.info(f'Total time: {time_delta}')
+        client.loop.run_until_complete(main(settings, client))
