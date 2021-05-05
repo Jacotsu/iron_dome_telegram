@@ -65,7 +65,10 @@ def dedupe_members_and_merge(list_1, list_2):
     for member_1 in list_1:
         for member_2 in list_2:
             if member_1['id'] == member_2['id']:
-                tmp_2.remove(member_2)
+                try:
+                    tmp_2.remove(member_2)
+                except ValueError:
+                    pass
                 break
     tmp.extend(tmp_2)
     return tmp

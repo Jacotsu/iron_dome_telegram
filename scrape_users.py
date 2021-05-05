@@ -91,10 +91,17 @@ async def process_group(group_entity):
             participants_non_aggressive
         )
     )]
-    participants = await client.get_participants(
-        group,
-        aggressive=True
-    )
+
+    for _ in range(5):
+        try:
+            participants = await client.get_participants(
+                group,
+                aggressive=True
+            )
+        except errors.FloodWaitError as e:
+            logger.error(f'Rate limit triggered, waiting {e.seconds}s')
+            sleep(e.seconds + 3.0)
+
     participants = [*map(
         lambda x: {
             'id': x.id,
