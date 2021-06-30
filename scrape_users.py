@@ -9,7 +9,8 @@ from time import sleep
 from telethon import TelegramClient, sync, errors
 from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.types import InputChannel
-from telethon.errors import ChannelPrivateError
+from telethon.errors import ChannelPrivateError, UsernameInvalidError,\
+    UsernameNotOccupiedError
 from telegram.ext import DelayQueue
 from utils import filter_emojis, init_settings, stringify_group_entity,\
     dedupe_members_and_merge
@@ -18,9 +19,6 @@ str_ftime_str = '%d-%m-%Y@%H:%M:%S'
 logging_level = logging.INFO
 settings_file_path = 'settings.json'
 data_path = 'data'
-fail_threshold = 5
-# 60 requests per second
-requests_wait_time = 1/60
 
 logging.basicConfig(
     level=logging_level,
@@ -31,21 +29,17 @@ logger = logging.getLogger()
 
 
 async def process_group(group_entity):
-    try:
-        # The user passed a channel dict
-        if isinstance(group_entity, dict):
-            try:
-                group = InputChannel(
-                    group_entity['group_id'],
-                    group_entity['group_hash']
-                )
-            except KeyError:
-                group = await client.get_input_entity(group_entity['url'])
-        else:
-            group = await client.get_input_entity(group_entity)
-    except Exception as e:
-        logger.error(e)
-        return 0
+    # The user passed a channel dict
+    if isinstance(group_entity, dict):
+        try:
+            group = InputChannel(
+                group_entity['group_id'],
+                group_entity['group_hash']
+            )
+        except KeyError:
+            group = await client.get_input_entity(group_entity['url'])
+    else:
+        group = await client.get_input_entity(group_entity)
 
     group_full = await client(
         GetFullChannelRequest(channel=group)
@@ -92,15 +86,10 @@ async def process_group(group_entity):
         )
     )]
 
-    for _ in range(5):
-        try:
-            participants = await client.get_participants(
-                group,
-                aggressive=True
-            )
-        except errors.FloodWaitError as e:
-            logger.error(f'Rate limit triggered, waiting {e.seconds}s')
-            sleep(e.seconds + 3.0)
+    participants = await client.get_participants(
+        group,
+        aggressive=True
+    )
 
     participants = [*map(
         lambda x: {
@@ -145,30 +134,19 @@ async def main(settings, client):
     settings['user_exceptions'].append(current_user.id)
 
     for group_entity in settings['target_groups']:
-        processed = False
-        fail_count = 0
-        while not processed:
-            try:
-                number_of_users = await process_group(group_entity)
-                total_users_scraped += number_of_users
-                total_groups_scraped += 1
-                processed = True
-            except errors.FloodWaitError as e:
-                logger.error(f'Rate limit triggered, waiting {e.seconds}s')
-                sleep(e.seconds + 3.0)
-            except ChannelPrivateError as e:
-                logger.error(
-                    f"{stringify_group_entity(group_entity)}: {e}"
-                )
-                break
-            except Exception as e:
-                logger.error(e)
-                fail_count += 1
-
-            if fail_count > fail_threshold:
-                logger.error(f'could not process group {group_entity}')
-                break
-            sleep(requests_wait_time)
+        try:
+            number_of_users = await process_group(group_entity)
+            total_users_scraped += number_of_users
+            total_groups_scraped += 1
+        except (
+            ChannelPrivateError,
+            UsernameInvalidError,
+            UsernameNotOccupiedError
+        ) as e:
+            logger.error(
+                f"{stringify_group_entity(group_entity)}: {e}"
+            )
+            continue
 
     time_delta = datetime.now() - start_time
     logger.info('Statistics')
@@ -182,6 +160,8 @@ if __name__ == '__main__':
     settings = init_settings(settings_file_path)
     logger.debug(f'Settings loaded: {settings}')
 
-    with TelegramClient('iron_dome', settings['api_id'],
-                        settings['api_hash']) as client:
+    with TelegramClient(
+        'iron_dome', settings['api_id'], settings['api_hash'],
+        flood_sleep_threshold=86400, base_logger='telethon'
+    ) as client:
         client.loop.run_until_complete(main(settings, client))

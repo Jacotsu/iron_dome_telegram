@@ -19,9 +19,6 @@ str_ftime_str = '%d-%m-%Y@%H:%M:%S'
 logging_level = logging.INFO
 settings_file_path = 'settings.json'
 data_path = 'infiltrators'
-fail_threshold = 5
-# 1 request per second
-requests_wait_time = 1
 
 logging.basicConfig(
     level=logging_level,
@@ -33,15 +30,17 @@ logger = logging.getLogger()
 
 async def process_group(group_entity):
     infiltrators = 0
-    try:
-        # The user passed a group id and hash
-        if isinstance(group_entity, list):
-            group = InputChannel(group_entity[0], group_entity[1])
-        else:
-            group = await client.get_input_entity(group_entity)
-    except Exception as e:
-        logger.error(e)
-        return 0
+    # The user passed a channel dict
+    if isinstance(group_entity, dict):
+        try:
+            group = InputChannel(
+                group_entity['group_id'],
+                group_entity['group_hash']
+            )
+        except KeyError:
+            group = await client.get_input_entity(group_entity['url'])
+    else:
+        group = await client.get_input_entity(group_entity)
 
     group_full = await client(
         GetFullChannelRequest(channel=group)
@@ -66,60 +65,51 @@ async def process_group(group_entity):
     participants = await client.get_participants(group, aggressive=True)
 
     for part in participants:
-        processed = False
-        while not processed:
-            try:
-                full_part = await client(GetFullUserRequest(part))
-                if part.id not in settings['user_exceptions'] and not part.bot\
-                   and full_part.about:
-                    logger.debug(
-                        f'{stringify_user(part)}: {full_part.about}'
+        try:
+            full_part = await client(GetFullUserRequest(part))
+            if part.id not in settings['user_exceptions'] and not part.bot\
+               and full_part.about:
+                logger.debug(
+                    f'{stringify_user(part)}: {full_part.about}'
+                )
+                if any(trigger_word in data_field.casefold()
+                       if data_field else None
+                       for data_field in [
+                           full_part.about,
+                           part.first_name,
+                           part.last_name,
+                           part.username
+                       ]
+                       for trigger_word in settings['trigger_words']):
+
+                    member = {
+                        'id': part.id,
+                        'access_hash': part.access_hash,
+                        'first_name': filter_emojis(part.first_name),
+                        'last_name': filter_emojis(part.last_name),
+                        'about': full_part.about,
+                        'username': part.username,
+                        'phone': part.phone
+                    }
+
+                    for old_member in target_group_dict['members']:
+                        if member['id'] == old_member['id']:
+                            target_group_dict['members'].remove(old_member)
+                            break
+                    target_group_dict['members'].append(member)
+                    logger.info(
+                        'Found possible infiltrator: '
+                        f'{stringify_user_dict(member)} '
+                        f'\"{member["about"]}\"'
                     )
-                    if any(trigger_word in data_field.casefold()
-                           if data_field else None
-                           for data_field in [
-                               full_part.about,
-                               part.first_name,
-                               part.last_name,
-                               part.username
-                           ]
-                           for trigger_word in settings['trigger_words']):
-
-                        member = {
-                            'id': part.id,
-                            'access_hash': part.access_hash,
-                            'first_name': filter_emojis(part.first_name),
-                            'last_name': filter_emojis(part.last_name),
-                            'about': full_part.about,
-                            'username': part.username,
-                            'phone': part.phone
-                        }
-
-                        for old_member in target_group_dict['members']:
-                            if member['id'] == old_member['id']:
-                                target_group_dict['members'].remove(old_member)
-                                break
-                        target_group_dict['members'].append(member)
-                        logger.info(
-                            'Found possible infiltrator: '
-                            f'{stringify_user_dict(member)} '
-                            f'\"{member["about"]}\"'
-                        )
-                        infiltrators += 1
-                processed = True
-            except errors.FloodWaitError as e:
-                logger.error(f'Rate limit triggered, waiting {e.seconds}s')
-                sleep(e.seconds + 3.0)
-            except Exception as e:
-                logger.error(e)
-            except KeyboardInterrupt as e:
-                with open(
-                    f'{data_path}/{target_group_dict["id"]}.json', 'w') as\
-                        target_group_file:
-                    json.dump(target_group_dict, target_group_file, indent=4,
-                              default=str, ensure_ascii=False)
-                raise e
-            sleep(requests_wait_time)
+                    infiltrators += 1
+        except KeyboardInterrupt as e:
+            with open(
+                f'{data_path}/{target_group_dict["id"]}.json', 'w') as\
+                    target_group_file:
+                json.dump(target_group_dict, target_group_file, indent=4,
+                          default=str, ensure_ascii=False)
+            raise e
 
     with open(f'{data_path}/{target_group_dict["id"]}.json', 'w') as\
             target_group_file:
@@ -127,6 +117,7 @@ async def process_group(group_entity):
                   default=str, ensure_ascii=False)
 
     return infiltrators
+
 
 async def main(settings, client):
     total_infiltrators = 0
@@ -138,26 +129,9 @@ async def main(settings, client):
 
     try:
         for group_entity in settings['groups_to_preserve']:
-            processed = False
-            fail_count = 0
-            while not processed:
-                try:
-                    number_of_infiltrators = await process_group(group_entity)
-                    total_infiltrators += number_of_infiltrators
-                    total_groups_scraped += 1
-                    processed = True
-                except errors.FloodWaitError as e:
-                    logger.error('Rate limit triggered, waiting '
-                                 f'{e.seconds}s')
-                    sleep(e.seconds + 3.0)
-                except Exception as e:
-                    logger.error(e)
-                    fail_count += 1
-
-                if fail_count > fail_threshold:
-                    logger.error(f'could not process group {group_entity}')
-                    break
-                sleep(requests_wait_time)
+            number_of_infiltrators = await process_group(group_entity)
+            total_infiltrators += number_of_infiltrators
+            total_groups_scraped += 1
     except KeyboardInterrupt:
         pass
     finally:
@@ -172,6 +146,8 @@ if __name__ == '__main__':
     settings = init_settings(settings_file_path)
     logger.debug(f'Settings loaded: {settings}')
 
-    with TelegramClient('iron_dome', settings['api_id'],
-                        settings['api_hash']) as client:
+    with TelegramClient(
+        'iron_dome', settings['api_id'], settings['api_hash'],
+        flood_sleep_threshold=86400, base_logger='telethon'
+    ) as client:
         client.loop.run_until_complete(main(settings, client))

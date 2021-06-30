@@ -54,7 +54,10 @@ def stringify_user(user):
 
 def stringify_group_entity(group_entity):
     if isinstance(group_entity, dict):
-        return f'{group_entity["title"]}'
+        try:
+            return f'{group_entity["title"]}'
+        except KeyError:
+            return f'{group_entity["group_id"]}'
     else:
         return f"{group_entity}"
 
