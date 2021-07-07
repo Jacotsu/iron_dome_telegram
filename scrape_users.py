@@ -151,7 +151,8 @@ async def main(settings, client):
         except (
             ChannelPrivateError,
             UsernameInvalidError,
-            UsernameNotOccupiedError
+            UsernameNotOccupiedError,
+            ValueError
         ) as e:
             logger.error(
                 f"{stringify_group_entity(group_entity)}: {e}"
