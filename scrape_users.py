@@ -45,11 +45,21 @@ async def process_group(group_entity):
         GetFullChannelRequest(channel=group)
     )
 
+    # If it is a channel we get the attached group chat
+    try:
+        chat = group_full.chats[1] \
+                if group_full.chats[0].broadcast else group_full.chats[0]
+    except IndexError:
+        logger.warning(
+            f'{group_entity} is a channel without a discussion group, skipped'
+        )
+        return 0
+
     target_group_dict = {
         'last_update': datetime.now(),
-        'id': group_full.chats[0].id,
-        'access_hash': group_full.chats[0].access_hash,
-        'title': filter_emojis(group_full.chats[0].title),
+        'id': chat.id,
+        'access_hash': chat.access_hash,
+        'title': filter_emojis(chat.title),
         'tags': [],
         'members': []
     }
@@ -69,7 +79,7 @@ async def process_group(group_entity):
     # Must be done twice because aggressive doesn't get users with
     # non latin names, and normal one doesn't get all users
     participants_non_aggressive = await client.get_participants(
-        group,
+        chat,
     )
     participants_non_aggressive = [*map(
         lambda x: {
@@ -87,7 +97,7 @@ async def process_group(group_entity):
     )]
 
     participants = await client.get_participants(
-        group,
+        chat,
         aggressive=True
     )
 
