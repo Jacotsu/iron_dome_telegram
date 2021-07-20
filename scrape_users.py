@@ -132,6 +132,9 @@ async def process_group(group_entity):
     logger.info('Data successfully collected from'
                 f' {target_group_dict["title"]}'
                 f'({target_group_dict["id"]})')
+    for chat in group_full.chats:
+        logger.info(f"\tAssociated chat: {chat.title}({chat.username})")
+
     return len(participants)
 
 
