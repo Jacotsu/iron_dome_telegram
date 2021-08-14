@@ -37,7 +37,11 @@ if __name__ == '__main__':
                 'last_name': filter_emojis(full_user.user.last_name),
                 'username': full_user.user.username,
                 'phone': full_user.user.phone,
-                'about': full_user.about
+                'about': full_user.about,
+                'status': str(full_user.user.status),
+                'restricted': full_user.user.restricted,
+                'restriction_reason': full_user.user.restriction_reason,
+                'scam': full_user.user.scam
             }, indent=4))
             sleep(requests_wait_time)
 
