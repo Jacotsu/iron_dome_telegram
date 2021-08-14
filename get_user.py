@@ -10,8 +10,6 @@ from utils import filter_emojis, init_settings
 
 logging_level = logging.INFO
 settings_file_path = 'settings.json'
-# 1 request per second
-requests_wait_time = 1
 
 logging.basicConfig(
     level=logging_level,
@@ -25,8 +23,10 @@ if __name__ == '__main__':
     settings = init_settings(settings_file_path)
     logger.debug(f'Settings loaded: {settings}')
 
-    with TelegramClient('iron_dome', settings['api_id'],
-                        settings['api_hash']) as client:
+    with TelegramClient(
+        'iron_dome', settings['api_id'], settings['api_hash'],
+        flood_sleep_threshold=86400, base_logger='telethon'
+    ) as client:
 
         for username in sys.argv[1:]:
             full_user = client(GetFullUserRequest(username))
@@ -43,6 +43,3 @@ if __name__ == '__main__':
                 'restriction_reason': full_user.user.restriction_reason,
                 'scam': full_user.user.scam
             }, indent=4))
-            sleep(requests_wait_time)
-
-
