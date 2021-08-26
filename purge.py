@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from time import sleep
 from telethon import TelegramClient, sync, errors
 from telethon.tl.types import InputPeerUser
+from telethon.errors.rpcbaseerrors import BadRequestError
 from utils import init_settings, stringify_user_dict
 
 str_ftime_str = '%d-%m-%Y@%H:%M:%S'
@@ -34,8 +35,8 @@ sh.setLevel(logging_level)
 logger.addHandler(sh)
 
 
-def purge_hostiles(hostile_dict):
-    ban_count = 0
+async def purge_hostiles(hostile_dict):
+    ban_count = ban_attempts = 0
     try:
         for group in settings['groups_to_preserve']:
             banned_users = []
@@ -54,18 +55,23 @@ def purge_hostiles(hostile_dict):
                 if h_id in banned_users:
                     continue
 
+                ban_attempts += 1
                 user = InputPeerUser(
                     hostile['id'], hostile['access_hash']
                 )
-                client.edit_permissions(
-                    group, user, view_messages=False
-                )
+                try:
+                    await client.edit_permissions(
+                        group, user, view_messages=False
+                    )
+                except BadRequestError as e:
+                    logger.error(f"{e} while processing: {hostile} ")
+                    continue
 
                 banned_users.append(hostile['id'])
                 ban_count += 1
                 logger.info(f'Banned {stringify_user_dict(hostile)}')
 
-                if ban_count % cool_down_limit == 0:
+                if ban_attempts % cool_down_limit == 0:
                     logger.info(
                         'Cooling down in order to avoid flood limit, wait'
                         f' {timedelta(seconds=cool_down_time)}'
@@ -88,12 +94,17 @@ async def main(settings, client):
     pathlist = Path(data_path).rglob('*.json')
     for path in pathlist:
         with open(path, 'r') as group_of_hostiles_file:
-            hostile_group = json.load(group_of_hostiles_file)
+            try:
+
+                hostile_group = json.load(group_of_hostiles_file)
+            except json.decoder.JSONDecodeError:
+                logger.error(f"Error while processing {path}", exc_info=True)
+
             for user in hostile_group['members']:
                 # This removes duplicates
                 hostile_dict[user['id']] = user
 
-    ban_count = purge_hostiles(hostile_dict)
+    ban_count = await purge_hostiles(hostile_dict)
     time_delta = datetime.now() - start_time
     logger.info('Statistics')
     logger.info(f'Bans in this session: {ban_count}')
